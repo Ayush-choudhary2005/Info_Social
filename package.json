@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "generate-content": "node scripts/generate-content.mjs"
+    "generate-content": "node scripts/generate-content.mjs",
+    "generate-politics-content": "node scripts/generate-politics-content.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
