@@ -1,0 +1,26 @@
+name: Daily politics content generation
+
+on:
+  schedule:
+    - cron: "30 6 * * *" # 06:30 UTC every day — offset from the main job
+  workflow_dispatch: {} # lets you run it on demand from the Actions tab
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate today's politics content
+        run: npm run generate-politics-content
+        env:
+          GROQ_API_KEY_POLITICS: ${{ secrets.GROQ_API_KEY_POLITICS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
