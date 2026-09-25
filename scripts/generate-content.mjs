@@ -137,7 +137,7 @@ Source text:
     body: JSON.stringify({
       // Check console.groq.com/docs/models for the current free-tier model
       // list — Groq retires and renames models periodically.
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-20b',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.4,
     }),
