@@ -1,0 +1,26 @@
+name: Daily content generation
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC every day — edit to change the time
+  workflow_dispatch: {}    # lets you run it on demand from the Actions tab
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate today's content
+        run: npm run generate-content
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
