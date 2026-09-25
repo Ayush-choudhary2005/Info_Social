@@ -2,8 +2,8 @@ name: Daily content generation
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # 06:00 UTC every day — edit to change the time
-  workflow_dispatch: {}    # lets you run it on demand from the Actions tab
+    - cron: "0 6 * * *" # 06:00 UTC every day — edit to change the time
+  workflow_dispatch: {} # lets you run it on demand from the Actions tab
 
 jobs:
   generate:
@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "22"
 
       - name: Install dependencies
         run: npm ci
