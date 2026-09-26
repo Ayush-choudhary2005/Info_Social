@@ -13,6 +13,10 @@
  *
  * Required env vars (set as GitHub Actions secrets, not committed here):
  *   GROQ_API_KEY
+ *   GROQ_API_KEY_2               <- optional second Groq key/account. If set,
+ *                                    calls are spread across both keys (and
+ *                                    both models) to reduce per-minute rate
+ *                                    and token limit errors.
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY   <- service role key, bypasses RLS. Never
  *                                  expose this one to the browser/frontend.
@@ -21,14 +25,14 @@
 import Parser from 'rss-parser';
 import { createClient } from '@supabase/supabase-js';
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_API_KEYS = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_2].filter(Boolean);
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!GROQ_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+if (GROQ_API_KEYS.length === 0 || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
-    'Missing GROQ_API_KEY, SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY. ' +
-      'Set these as GitHub Actions secrets (see README.md).'
+    'Missing GROQ_API_KEY (and optionally GROQ_API_KEY_2), SUPABASE_URL, or ' +
+      'SUPABASE_SERVICE_ROLE_KEY. Set these as GitHub Actions secrets (see README.md).'
   );
   process.exit(1);
 }
@@ -48,22 +52,33 @@ const FRESHNESS_HOURS = 48;
 const HISTORY_ITEMS_PER_DAY = 8;
 
 // Two free-tier models, used in rotation. Groq's free plan gives each model
-// its own separate rate limit and daily token budget (see
-// console.groq.com/docs/rate-limits), so alternating between them roughly
-// doubles how much this script can process per day versus using just one.
+// its own separate rate limit and daily token budget.
 const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
 
-// Minimum gap between calls to the *same* model, to stay under Groq's free
-// plan limit of ~30 requests/minute per model (60,000ms / 30 = 2,000ms;
-// 2,100ms leaves a small safety margin).
-const MIN_GAP_MS = 2100;
+// Every (API key × model) pair is its own independent quota "lane" on Groq's
+// free plan. With 2 keys and 2 models that's 4 lanes instead of 2, which is
+// what actually fixes "tokens exhausted" errors — each lane gets its own
+// separate per-minute token budget.
+const LANES = GROQ_API_KEYS.flatMap((key, keyIndex) =>
+  MODELS.map((model) => ({ key, model, keyIndex }))
+);
 
-// Upper bound on how many items get sent to Groq in one run. Each free-tier
-// model above is capped at roughly 200,000 tokens/day, so rotating between
-// two gives ~400,000 tokens/day combined. At an estimated 400-500 tokens per
-// item (truncated source text in, a ~100-word rewritten body out), 500
-// items/day fits with some margin — but actual daily output also depends on
-// how many genuinely fresh items the feeds below produce that day. Add more
+// Minimum gap between calls made on the *same* lane. Groq's free plan caps
+// each model around 8,000 tokens/minute, which is a tighter limit than the
+// ~30 requests/minute cap — a request every 2s can still blow past the token
+// cap well before it blows past the request-count cap. At an estimated
+// ~650 tokens per call, 6,500ms keeps each lane comfortably under 8,000 TPM.
+const MIN_GAP_MS = 6500;
+
+// How many times to retry a single call after a 429 (rate limited) response
+// before giving up on that item. Groq's error message includes how long to
+// wait, and this respects that instead of guessing.
+const MAX_RETRIES = 4;
+
+// Upper bound on how many items get sent to Groq in one run. With 4 lanes,
+// the combined daily token budget is roughly 4x a single model's, so 500
+// items/day fits comfortably — but actual daily output also depends on how
+// many genuinely fresh items the feeds below produce that day. Add more
 // feeds to NEWS_FEEDS if you're consistently coming in under this number.
 const MAX_ITEMS_PER_RUN = 500;
 
@@ -224,32 +239,46 @@ async function getNewsItems() {
 
 const lastCallAt = new Map();
 
-async function callGroq(model, prompt) {
-  const last = lastCallAt.get(model) ?? 0;
+async function callGroq(lane, prompt, attempt = 1) {
+  const throttleKey = `${lane.keyIndex}:${lane.model}`;
+  const last = lastCallAt.get(throttleKey) ?? 0;
   const wait = MIN_GAP_MS - (Date.now() - last);
   if (wait > 0) await sleep(wait);
-  lastCallAt.set(model, Date.now());
+  lastCallAt.set(throttleKey, Date.now());
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      Authorization: `Bearer ${lane.key}`,
     },
     body: JSON.stringify({
-      model,
+      model: lane.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.4,
     }),
   });
 
-  if (!res.ok) {
-    throw new Error(`Groq API error ${res.status} (${model}): ${await res.text()}`);
+  if (res.ok) return res.json();
+
+  const bodyText = await res.text();
+
+  if (res.status === 429 && attempt <= MAX_RETRIES) {
+    const headerWait = Number(res.headers.get('retry-after'));
+    const match = bodyText.match(/try again in ([\d.]+)s/i);
+    const waitSeconds =
+      Number.isFinite(headerWait) && headerWait > 0 ? headerWait : match ? Number(match[1]) : 5;
+    console.warn(
+      `Rate limited on lane ${throttleKey} (attempt ${attempt}/${MAX_RETRIES}), waiting ${waitSeconds}s...`
+    );
+    await sleep(waitSeconds * 1000 + 250);
+    return callGroq(lane, prompt, attempt + 1);
   }
-  return res.json();
+
+  throw new Error(`Groq API error ${res.status} (${lane.model}): ${bodyText}`);
 }
 
-async function summarize(item, model) {
+async function summarize(item, lane) {
   const prompt = `Rewrite the following into a short, neutral, accurate summary for a "learn something today" feed.
 Rules:
 - 80-130 words in the body.
@@ -262,7 +291,7 @@ Rules:
 Source text:
 """${item.rawText.slice(0, 1600)}"""`;
 
-  const data = await callGroq(model, prompt);
+  const data = await callGroq(lane, prompt);
   const raw = data.choices?.[0]?.message?.content ?? '';
   const cleaned = raw.replace(/```json|```/g, '').trim();
   const parsed = JSON.parse(cleaned);
@@ -313,17 +342,17 @@ async function main() {
   const toProcess = rawItems.slice(0, MAX_ITEMS_PER_RUN);
 
   let inserted = 0;
-  let modelIndex = 0;
+  let laneIndex = 0;
   for (const item of toProcess) {
     try {
       if (!item.sourceUrl || !/^https?:\/\//.test(item.sourceUrl)) {
         console.warn('Skipped (no valid source URL):', item.rawText?.slice(0, 60));
         continue;
       }
-      const model = MODELS[modelIndex % MODELS.length];
-      modelIndex += 1;
+      const lane = LANES[laneIndex % LANES.length];
+      laneIndex += 1;
 
-      const post = await summarize(item, model);
+      const post = await summarize(item, lane);
       const ok = await insertPost(post);
       if (ok) inserted += 1;
     } catch (err) {

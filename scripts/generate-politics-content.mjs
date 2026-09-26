@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Politics & current-affairs content generator — separate script, separate
- * Groq API key/quota from the main generate-content.mjs, same Supabase
+ * Groq API key(s)/quota from the main generate-content.mjs, same Supabase
  * database and 'posts' table (just a different category value).
  *
  * Pulls real political news — conflict, controversy, protests, elections,
@@ -12,10 +12,13 @@
  * entertainment) isn't something this script does.
  *
  * Required env vars:
- *   GROQ_API_KEY_POLITICS       <- a separate Groq key/account from the
- *                                  main script, so it has its own free quota
- *   SUPABASE_URL                <- same Supabase project as the main script
- *   SUPABASE_SERVICE_ROLE_KEY   <- same service role key as the main script
+ *   GROQ_API_KEY_POLITICS         <- a Groq key/account separate from the
+ *                                    main script's, so it has its own quota
+ *   GROQ_API_KEY_POLITICS_2       <- optional second key. If set, calls are
+ *                                    spread across both keys (and both
+ *                                    models) to reduce rate/token limit hits.
+ *   SUPABASE_URL                  <- same Supabase project as the main script
+ *   SUPABASE_SERVICE_ROLE_KEY     <- same service role key as the main script
  *
  * IMPORTANT one-time setup: the 'posts' table's category CHECK constraint
  * currently only allows ('science', 'history', 'news'). Run this once in
@@ -30,14 +33,16 @@
 import Parser from 'rss-parser';
 import { createClient } from '@supabase/supabase-js';
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY_POLITICS;
+const GROQ_API_KEYS = [process.env.GROQ_API_KEY_POLITICS, process.env.GROQ_API_KEY_POLITICS_2].filter(
+  Boolean
+);
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!GROQ_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+if (GROQ_API_KEYS.length === 0 || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
-    'Missing GROQ_API_KEY_POLITICS, SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY. ' +
-      'Set these as GitHub Actions secrets.'
+    'Missing GROQ_API_KEY_POLITICS (and optionally GROQ_API_KEY_POLITICS_2), SUPABASE_URL, or ' +
+      'SUPABASE_SERVICE_ROLE_KEY. Set these as GitHub Actions secrets.'
   );
   process.exit(1);
 }
@@ -51,7 +56,21 @@ const rssParser = new Parser();
 
 const FRESHNESS_HOURS = 48;
 const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
-const MIN_GAP_MS = 2100; // stay under Groq's free-plan ~30 requests/minute per model
+
+// Every (API key × model) pair is its own independent quota lane on Groq's
+// free plan. With 2 keys and 2 models that's 4 lanes instead of 2.
+const LANES = GROQ_API_KEYS.flatMap((key, keyIndex) =>
+  MODELS.map((model) => ({ key, model, keyIndex }))
+);
+
+// Groq's free plan caps each model around 8,000 tokens/minute, a tighter
+// limit than the ~30 requests/minute cap. At an estimated ~650 tokens per
+// call, 6,500ms per lane keeps comfortably under that.
+const MIN_GAP_MS = 6500;
+
+// Retries a rate-limited (429) call, respecting Groq's own wait-time hint,
+// instead of dropping the item immediately.
+const MAX_RETRIES = 4;
 
 // Verified, keyless RSS feeds covering global and Indian political news.
 // A few commonly-cited Indian-outlet feed URLs (NDTV, The Hindu, TOI's
@@ -133,32 +152,46 @@ async function getPoliticsItems() {
 
 const lastCallAt = new Map();
 
-async function callGroq(model, prompt) {
-  const last = lastCallAt.get(model) ?? 0;
+async function callGroq(lane, prompt, attempt = 1) {
+  const throttleKey = `${lane.keyIndex}:${lane.model}`;
+  const last = lastCallAt.get(throttleKey) ?? 0;
   const wait = MIN_GAP_MS - (Date.now() - last);
   if (wait > 0) await sleep(wait);
-  lastCallAt.set(model, Date.now());
+  lastCallAt.set(throttleKey, Date.now());
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      Authorization: `Bearer ${lane.key}`,
     },
     body: JSON.stringify({
-      model,
+      model: lane.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.4,
     }),
   });
 
-  if (!res.ok) {
-    throw new Error(`Groq API error ${res.status} (${model}): ${await res.text()}`);
+  if (res.ok) return res.json();
+
+  const bodyText = await res.text();
+
+  if (res.status === 429 && attempt <= MAX_RETRIES) {
+    const headerWait = Number(res.headers.get('retry-after'));
+    const match = bodyText.match(/try again in ([\d.]+)s/i);
+    const waitSeconds =
+      Number.isFinite(headerWait) && headerWait > 0 ? headerWait : match ? Number(match[1]) : 5;
+    console.warn(
+      `Rate limited on lane ${throttleKey} (attempt ${attempt}/${MAX_RETRIES}), waiting ${waitSeconds}s...`
+    );
+    await sleep(waitSeconds * 1000 + 250);
+    return callGroq(lane, prompt, attempt + 1);
   }
-  return res.json();
+
+  throw new Error(`Groq API error ${res.status} (${lane.model}): ${bodyText}`);
 }
 
-async function summarize(item, model) {
+async function summarize(item, lane) {
   const prompt = `Rewrite the following into a short, factual summary of a political news story, for a current-affairs feed.
 Rules:
 - 80-130 words.
@@ -171,7 +204,7 @@ Rules:
 Source text:
 """${item.rawText.slice(0, 1600)}"""`;
 
-  const data = await callGroq(model, prompt);
+  const data = await callGroq(lane, prompt);
   const raw = data.choices?.[0]?.message?.content ?? '';
   const cleaned = raw.replace(/```json|```/g, '').trim();
   const parsed = JSON.parse(cleaned);
@@ -221,17 +254,17 @@ async function main() {
   console.log(`Found ${rawItems.length} candidate political items.`);
 
   let inserted = 0;
-  let modelIndex = 0;
+  let laneIndex = 0;
   for (const item of rawItems) {
     try {
       if (!item.sourceUrl || !/^https?:\/\//.test(item.sourceUrl)) {
         console.warn('Skipped (no valid source URL):', item.rawText?.slice(0, 60));
         continue;
       }
-      const model = MODELS[modelIndex % MODELS.length];
-      modelIndex += 1;
+      const lane = LANES[laneIndex % LANES.length];
+      laneIndex += 1;
 
-      const post = await summarize(item, model);
+      const post = await summarize(item, lane);
       const ok = await insertPost(post);
       if (ok) inserted += 1;
     } catch (err) {
