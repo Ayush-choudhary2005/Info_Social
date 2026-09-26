@@ -22,5 +22,6 @@ jobs:
         run: npm run generate-politics-content
         env:
           GROQ_API_KEY_POLITICS: ${{ secrets.GROQ_API_KEY_POLITICS }}
+          GROK_API_KEY_POLITICS_2: ${{ secrets.GROK_API_KEY_POLITICS_2 }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
