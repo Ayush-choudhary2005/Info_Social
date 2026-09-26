@@ -12,6 +12,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   science: 'Science',
   history: 'History',
   news: 'News',
+  politics: 'Politics',
 };
 
 export default function FeedCard({ post }: { post: Post }) {

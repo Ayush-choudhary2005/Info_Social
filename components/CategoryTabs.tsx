@@ -1,6 +1,6 @@
 'use client';
 
-const CATEGORIES = ['all', 'science', 'history', 'news'] as const;
+const CATEGORIES = ['all', 'science', 'history', 'news', 'politics'] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 export default function CategoryTabs({

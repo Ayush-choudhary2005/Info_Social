@@ -6,7 +6,7 @@ create table if not exists posts (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   body text not null,
-  category text not null check (category in ('science', 'history', 'news')),
+  category text not null check (category in ('science', 'history', 'news', 'politics')),
   source_name text not null,
   source_url text not null unique,
   published_at timestamptz not null default now(),
