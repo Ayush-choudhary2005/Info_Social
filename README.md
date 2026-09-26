@@ -1,82 +1,69 @@
-# Field Notes
+# Info Social
 
-A short-form feed of science, history and news facts — fully automated,
-sourced, and built to be read for a few minutes rather than scrolled for
-hours. No paid services required.
+Info Social is a short-form content feed built around a simple idea: the
+scrolling, card-by-card format that makes apps like Instagram or TikTok hard
+to put down doesn't have to be used for entertainment. It can just as easily
+be used to deliver science facts, history, and news — short, sourced, and
+free of the mechanics that make those other apps addictive.
 
-## What's in here
+## What it is
 
-- `app/`, `components/`, `lib/` — the Next.js feed (deploy free on Vercel)
-- `supabase/schema.sql` — the database schema (run once in Supabase)
-- `scripts/generate-content.mjs` — the daily automation script
-- `.github/workflows/daily-content.yml` — runs that script every day for
-  free via GitHub Actions, with no manual step
+Each post in the feed is a short, plain-language write-up of a real event or
+fact, always paired with a link back to where it came from. There is no
+algorithmic "for you" ranking designed to maximize time spent in the app, no
+autoplay from one card into the next, no streaks, and no infinite scroll.
+The feed is organized into a small number of categories and shows a fixed
+batch of posts at a time, with a deliberate tap required to see more.
 
-## 1. Set up Supabase (free)
+The categories are:
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open the SQL editor and run everything in `supabase/schema.sql`.
-3. Go to **Project Settings → API** and copy three values: the Project URL,
-   the `anon` public key, and the `service_role` key (keep this one secret —
-   it can write to your database).
+- **Science** — drawn from astronomy and general science sources.
+- **History** — notable historical events tied to the current date.
+- **News** — current events across world, business, technology, and health.
+- **Politics** — political developments, statements, and controversies from
+  India and around the world, reported neutrally.
+- **Unbelievable** — real but unusual or controversial stories, kept out of
+  the main feed and reachable only through its own tab.
 
-## 2. Get a free Groq API key
+## How it works
 
-1. Create an account at [console.groq.com](https://console.groq.com) — no
-   card required.
-2. Create an API key from the console.
+The project has two halves that don't run at the same time or place.
 
-## 3. Run the site locally
+**The website** is a Next.js application. It reads posts from a database
+and displays them as a single-column feed with a category filter at the
+top. It doesn't generate or fetch content itself — it only ever displays
+whatever has already been written to the database. A small on-device timer
+shows how many minutes have been spent in the app that day, as a gentle,
+private nudge rather than a tracked metric.
 
-1. Copy `.env.example` to `.env.local` and fill in the two `NEXT_PUBLIC_`
-   values from step 1.
-2. `npm install`
-3. `npm run dev` and open <http://localhost:3000>
+**The content pipeline** runs separately and automatically, once a day, on
+a schedule, with no manual step in between. Three independent scripts each
+handle one part of the feed:
 
-The feed will say "No posts yet" until you've run the generator at least
-once (see step 4) or added a test row manually in the Supabase table editor.
+- one script gathers science, history, and general news items,
+- one gathers political news,
+- one gathers unusual or controversial stories for the Unbelievable tab.
 
-## 4. Automate content generation (free, no manual review)
+Each script works the same way: it pulls fresh items from public sources
+(encyclopedic APIs and news RSS feeds), sends the raw text to a language
+model to be rewritten into a short, plain-language summary, and then saves
+the result to the database — but only if the original item came with a
+real, working source link. An item with no source is discarded rather than
+published. Every rewritten post is instructed to stay strictly factual and
+to avoid inventing or exaggerating anything beyond what the source said.
+Items that have already been posted before are recognized and skipped, so
+the same story doesn't appear twice.
 
-1. Push this project to a GitHub repository.
-2. In the repo's **Settings → Secrets and variables → Actions**, add three
-   repository secrets:
-   - `GROQ_API_KEY`
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-3. That's it. `.github/workflows/daily-content.yml` runs the script every
-   day at 06:00 UTC on its own. You can also open the repo's **Actions**
-   tab and run it manually the first time to see it work immediately.
+Because all three scripts run independently on their own schedules and
+their own API keys, one running into trouble doesn't stop the others.
 
-To test the script on your own machine first, set the same three variables
-in your terminal and run `npm run generate-content`.
+## How it's built
 
-## 5. Deploy the site (free)
+- **Frontend:** Next.js and React, styled with Tailwind CSS.
+- **Database:** Postgres, hosted on Supabase, with the website only ever
+  given read access — all writing happens through the automated scripts.
+- **Content rewriting:** a language model accessed through Groq's API.
+- **Scheduling:** GitHub Actions runs each content script once a day.
+- **Hosting:** the website is deployed on Vercel.
 
-1. Import the GitHub repo into [Vercel](https://vercel.com).
-2. Add the two `NEXT_PUBLIC_` env vars in the Vercel project settings.
-3. Deploy. Vercel's free Hobby plan covers this comfortably, but note it's
-   intended for personal/non-commercial projects — worth knowing if this
-   ever becomes a commercial product.
-
-## How the automation stays safe to run unsupervised
-
-- **No source link, no post.** `generate-content.mjs` throws away any item
-  that doesn't have a real, working source URL before it ever reaches
-  Groq. This is the main guardrail against low-quality or fabricated
-  content going out with nobody checking it.
-- **Duplicates are rejected automatically** by a unique constraint on
-  `source_url` in the database.
-- **The model is told not to invent facts** beyond what's in the source
-  text, and to skip sensationalism — but no model is perfect, so it's
-  worth spot-checking the feed occasionally even though nothing requires
-  you to.
-
-## Things that change over time — check before you rely on them
-
-- Groq's free-tier model list changes; if the script starts failing with a
-  model error, check console.groq.com/docs/models and update the `model`
-  field in `generate-content.mjs`.
-- Free-tier limits for Groq, Supabase, and Vercel are generous enough for a
-  feed publishing a handful of items a day, but confirm current numbers on
-  each provider's site since they're revised periodically.
+Every piece of this runs on a free tier of its respective service.
