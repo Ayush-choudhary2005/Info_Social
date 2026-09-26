@@ -25,7 +25,13 @@ export default function Home() {
         .order('published_at', { ascending: false })
         .range(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE - 1);
 
-      if (cat !== 'all') query = query.eq('category', cat);
+      if (cat !== 'all') {
+        query = query.eq('category', cat);
+      } else {
+        // Keep the "spicy" category out of the main All feed — it's opt-in,
+        // reached only via its own tab.
+        query = query.neq('category', 'spicy');
+      }
 
       const { data, error } = await query;
       if (!error && data) {
@@ -63,7 +69,7 @@ export default function Home() {
     <main className="max-w-xl mx-auto min-h-screen">
       <header className="sticky top-0 bg-paper/95 backdrop-blur border-b border-line z-10">
         <div className="flex items-center justify-between px-4 pt-5">
-          <h1 className="font-serif text-2xl">Info Social</h1>
+          <h1 className="font-serif text-2xl">Field Notes</h1>
           <span className="text-xs text-muted">{minutesToday} min today</span>
         </div>
         <CategoryTabs active={category} onChange={setCategory} />
