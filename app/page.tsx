@@ -84,7 +84,7 @@ export default function Home() {
               <path d="M4 5.5C4 4.7 4.7 4 5.5 4H12v16H5.5A1.5 1.5 0 0 1 4 18.5v-13Z" />
               <path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H12v16h6.5a1.5 1.5 0 0 0 1.5-1.5v-13Z" />
             </svg>
-            <h1 className="font-serif text-2xl">Field Notes</h1>
+            <h1 className="font-serif text-2xl">Info Social</h1>
           </div>
           <span className="rounded-full border border-line bg-card px-2.5 py-1 text-xs text-muted">
             {minutesToday} min today
