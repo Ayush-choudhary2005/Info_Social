@@ -1,3 +1,5 @@
+import { CATEGORY_META, CategoryKey } from '@/lib/categories';
+
 export type Post = {
   id: string;
   title: string;
@@ -8,35 +10,48 @@ export type Post = {
   published_at: string;
 };
 
-const CATEGORY_LABEL: Record<string, string> = {
-  science: 'Science',
-  history: 'History',
-  news: 'News',
-  politics: 'Politics',
-  spicy: 'Unbelievable',
-};
-
-export default function FeedCard({ post }: { post: Post }) {
+export default function FeedCard({ post, index = 0 }: { post: Post; index?: number }) {
+  const meta = CATEGORY_META[post.category as CategoryKey] ?? {
+    label: post.category,
+    color: '#2F6F4E',
+    bg: '#E7EFE9',
+  };
   const date = new Date(post.published_at).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
   });
 
   return (
-    <article className="border border-line bg-card rounded-sm p-6 mb-4">
-      <div className="flex items-center justify-between mb-3 text-xs text-ochre">
-        <span>{CATEGORY_LABEL[post.category] ?? post.category}</span>
-        <span className="text-muted">{date}</span>
+    <article
+      className="group mb-4 animate-fade-in-up rounded-md border border-line border-l-4 bg-card p-6 opacity-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      style={{
+        borderLeftColor: meta.color,
+        animationDelay: `${Math.min(index, 8) * 60}ms`,
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <span
+          className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+          style={{ backgroundColor: meta.bg, color: meta.color }}
+        >
+          {meta.label}
+        </span>
+        <span className="text-xs text-muted">{date}</span>
       </div>
-      <h2 className="font-serif text-xl leading-snug mb-2">{post.title}</h2>
-      <p className="text-[15px] leading-relaxed text-ink/90 mb-4">{post.body}</p>
+      <h2 className="mb-2 font-serif text-xl leading-snug transition-colors group-hover:text-accent">
+        {post.title}
+      </h2>
+      <p className="mb-4 text-[15px] leading-relaxed text-ink/90">{post.body}</p>
       <a
         href={post.source_url}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-sm text-accent hover:underline"
+        className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
       >
-        Source: {post.source_name} ↗
+        Source: {post.source_name}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M7 17 17 7M7 7h10v10" />
+        </svg>
       </a>
     </article>
   );

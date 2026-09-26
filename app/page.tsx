@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import CategoryTabs, { Category } from '@/components/CategoryTabs';
 import FeedCard, { Post } from '@/components/FeedCard';
+import SkeletonCard from '@/components/SkeletonCard';
 import EndOfFeed from '@/components/EndOfFeed';
 
 const PAGE_SIZE = 12;
@@ -66,41 +67,68 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="max-w-xl mx-auto min-h-screen">
-      <header className="sticky top-0 bg-paper/95 backdrop-blur border-b border-line z-10">
-        <div className="flex items-center justify-between px-4 pt-5">
-          <h1 className="font-serif text-2xl">Field Notes</h1>
-          <span className="text-xs text-muted">{minutesToday} min today</span>
+    <main className="min-h-screen max-w-xl mx-auto">
+      <header className="sticky top-0 z-10 border-b border-line bg-paper/95 backdrop-blur">
+        <div className="flex items-center justify-between px-4 pb-1 pt-5">
+          <div className="flex items-center gap-2">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#2F6F4E"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 5.5C4 4.7 4.7 4 5.5 4H12v16H5.5A1.5 1.5 0 0 1 4 18.5v-13Z" />
+              <path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H12v16h6.5a1.5 1.5 0 0 0 1.5-1.5v-13Z" />
+            </svg>
+            <h1 className="font-serif text-2xl">Field Notes</h1>
+          </div>
+          <span className="rounded-full border border-line bg-card px-2.5 py-1 text-xs text-muted">
+            {minutesToday} min today
+          </span>
         </div>
         <CategoryTabs active={category} onChange={setCategory} />
       </header>
 
       <div className="px-4 pt-4">
-        {posts.map((post) => (
-          <FeedCard key={post.id} post={post} />
-        ))}
+        {posts.length === 0 && loading
+          ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+          : posts.map((post, i) => <FeedCard key={post.id} post={post} index={i} />)}
 
         {posts.length === 0 && !loading && (
-          <p className="text-sm text-muted py-12 text-center">
+          <p className="py-12 text-center text-sm text-muted">
             No posts yet — run the content generator to populate the feed.
           </p>
         )}
 
-        {hasMore ? (
-          <button
-            onClick={() => {
-              const next = page + 1;
-              setPage(next);
-              loadPage(next, category, false);
-            }}
-            disabled={loading}
-            className="w-full py-3 mb-8 border border-line rounded-sm text-sm text-ink hover:bg-card transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Loading…' : 'Load more'}
-          </button>
-        ) : (
-          posts.length > 0 && <EndOfFeed />
-        )}
+        {posts.length > 0 &&
+          (hasMore ? (
+            <button
+              onClick={() => {
+                const next = page + 1;
+                setPage(next);
+                loadPage(next, category, false);
+              }}
+              disabled={loading}
+              className="mb-8 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-3 text-sm text-ink transition-all duration-200 hover:border-ink/30 hover:bg-card disabled:opacity-50"
+            >
+              {loading ? (
+                'Loading…'
+              ) : (
+                <>
+                  Load more
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </>
+              )}
+            </button>
+          ) : (
+            <EndOfFeed />
+          ))}
       </div>
     </main>
   );
