@@ -40,6 +40,7 @@ export default function Home() {
   useEffect(() => {
     setPage(0);
     loadPage(0, category, true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [category, loadPage]);
 
   // Gentle time-on-page counter, reset each day, stored only in the browser.
