@@ -63,7 +63,7 @@ export default function Home() {
     <main className="max-w-xl mx-auto min-h-screen">
       <header className="sticky top-0 bg-paper/95 backdrop-blur border-b border-line z-10">
         <div className="flex items-center justify-between px-4 pt-5">
-          <h1 className="font-serif text-2xl">Field Notes</h1>
+          <h1 className="font-serif text-2xl">Info Social</h1>
           <span className="text-xs text-muted">{minutesToday} min today</span>
         </div>
         <CategoryTabs active={category} onChange={setCategory} />
