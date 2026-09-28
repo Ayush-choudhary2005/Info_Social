@@ -66,7 +66,7 @@ const LANES = GROQ_API_KEYS.flatMap((key, keyIndex) =>
 // Groq's free plan caps each model around 8,000 tokens/minute, a tighter
 // limit than the ~30 requests/minute cap. At an estimated ~650 tokens per
 // call, 6,500ms per lane keeps comfortably under that.
-const MIN_GAP_MS = 6500;
+const MIN_GAP_MS = 9500;
 
 // Retries a rate-limited (429) call, respecting Groq's own wait-time hint,
 // instead of dropping the item immediately.

@@ -68,7 +68,7 @@ const LANES = GROQ_API_KEYS.flatMap((key, keyIndex) =>
 // ~30 requests/minute cap — a request every 2s can still blow past the token
 // cap well before it blows past the request-count cap. At an estimated
 // ~650 tokens per call, 6,500ms keeps each lane comfortably under 8,000 TPM.
-const MIN_GAP_MS = 6500;
+const MIN_GAP_MS = 9500;
 
 // How many times to retry a single call after a 429 (rate limited) response
 // before giving up on that item. Groq's error message includes how long to

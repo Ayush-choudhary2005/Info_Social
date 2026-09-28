@@ -62,7 +62,7 @@ const LANES = GROQ_API_KEYS.flatMap((key, keyIndex) =>
   MODELS.map((model) => ({ key, model, keyIndex }))
 );
 
-const MIN_GAP_MS = 6500; // TPM-aware pacing per lane — see the other scripts for the math
+const MIN_GAP_MS = 9500; // TPM-aware pacing per lane — see the other scripts for the math
 const MAX_RETRIES = 4;
 
 // Not fully verified end-to-end — Google News links redirect through
