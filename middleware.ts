@@ -28,6 +28,7 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
+    // Inside your middleware.ts
     body: JSON.stringify({
       endpoint: request.nextUrl.pathname,
       method: request.method,
@@ -37,6 +38,11 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
       user_agent: request.headers.get('user-agent') || '',
       metadata: {
         host: request.headers.get('host') || '',
+        latitude: request.headers.get('x-vercel-ip-latitude'),
+        longitude: request.headers.get('x-vercel-ip-longitude'),
+        city: request.headers.get('x-vercel-ip-city'),
+        country: request.headers.get('x-vercel-ip-country'),
+        region: request.headers.get('x-vercel-ip-country-region'),
       },
     }),
   }).catch(() => {});
