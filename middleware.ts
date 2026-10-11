@@ -1,34 +1,70 @@
+// middleware.ts (Root of your Next.js News App)
 import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 
+const COLLECTOR_URL = 'https://api-security-analytics-dashboard-vyfe.onrender.com';
+const API_KEY = 'YOUR_PROJECT_SDK_KEY'; // From your dashboard
+
+// In-memory cache of blocked IPs synced from dashboard
+let blockedIpsCache: Set<string> = new Set();
+let lastSyncTime = 0;
+const SYNC_INTERVAL_MS = 30000; // Check for updated blocked IPs every 30s
+
+async function syncBlockedIps() {
+  const now = Date.now();
+  if (now - lastSyncTime < SYNC_INTERVAL_MS) return;
+  lastSyncTime = now;
+  try {
+    const res = await fetch(`${COLLECTOR_URL}/api/v1/blocked-ips`, {
+      headers: { Authorization: `Bearer ${API_KEY}` },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.blocked_ips)) {
+        blockedIpsCache = new Set(data.blocked_ips);
+      }
+    }
+  } catch {
+    // Fail-open: network glitch never breaks your news website
+  }
+}
+
 export async function middleware(request: NextRequest, event: NextFetchEvent) {
-  const start = Date.now();
-  const response = NextResponse.next();
-  const latencyMs = Date.now() - start;
-
-  const collectorUrl = (
-    process.env.SECURITY_SDK_COLLECTOR_URL ||
-    'https://api-security-analytics-dashboard-vyfe.onrender.com'
-  ).replace(/\/$/, '') + '/ingest';
-
-  const apiKey =
-    process.env.SECURITY_SDK_API_KEY ||
-    'ask_7a927e36f15f_335f53cf6bb778c9a97b2e23e24e8e15';
-
-  // Client IP resolution (Vercel provides accurate client IPs via headers)
   const clientIp =
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
     request.headers.get('x-real-ip') ||
     '127.0.0.1';
 
-  // Fire-and-forget telemetry promise
-  const telemetryPromise = fetch(collectorUrl, {
+  // 1. Background sync without slowing down the page request
+  if (event?.waitUntil) {
+    event.waitUntil(syncBlockedIps());
+  } else {
+    syncBlockedIps().catch(() => {});
+  }
+
+  // 2. Active Enforcement: Return 403 immediately if client IP is blocked
+  if (blockedIpsCache.has(clientIp)) {
+    return new NextResponse(
+      JSON.stringify({
+        error: 'Forbidden',
+        message: 'Your IP has been blocked by security policy.',
+      }),
+      { status: 403, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  const start = Date.now();
+  const response = NextResponse.next();
+  const latencyMs = Date.now() - start;
+
+  // 3. Telemetry Forwarding
+  const telemetryPromise = fetch(`${COLLECTOR_URL}/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${API_KEY}`,
     },
-    // Inside your middleware.ts
     body: JSON.stringify({
       endpoint: request.nextUrl.pathname,
       method: request.method,
@@ -47,8 +83,6 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
     }),
   }).catch(() => {});
 
-  // event.waitUntil ensures the telemetry dispatch completes on Vercel Edge
-  // without delaying or blocking the user's response
   if (event?.waitUntil) {
     event.waitUntil(telemetryPromise);
   }
@@ -56,9 +90,6 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   return response;
 }
 
-// Only monitor pages and API routes; skip static assets
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
