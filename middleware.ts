@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 
 const COLLECTOR_URL = 'https://api-security-analytics-dashboard-vyfe.onrender.com';
-const API_KEY = 'YOUR_PROJECT_SDK_KEY'; // From your dashboard
+const API_KEY = 'ask_7a927e36f15f_335f53cf6bb778c9a97b2e23e24e8e15'; // From your dashboard
 
 // In-memory cache of blocked IPs synced from dashboard
 let blockedIpsCache: Set<string> = new Set();
@@ -59,11 +59,11 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   const latencyMs = Date.now() - start;
 
   // 3. Telemetry Forwarding
-  const telemetryPromise = fetch(`${SECURITY_SDK_COLLECTOR_URL}/ingest`, {
+  const telemetryPromise = fetch(`${COLLECTOR_URL}/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${SECURITY_SDK_API_KEY}`,
+      Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
       endpoint: request.nextUrl.pathname,
