@@ -59,11 +59,11 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   const latencyMs = Date.now() - start;
 
   // 3. Telemetry Forwarding
-  const telemetryPromise = fetch(`${COLLECTOR_URL}/ingest`, {
+  const telemetryPromise = fetch(`${SECURITY_SDK_COLLECTOR_URL}/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${API_KEY}`,
+      Authorization: `Bearer ${SECURITY_SDK_API_KEY}`,
     },
     body: JSON.stringify({
       endpoint: request.nextUrl.pathname,
